@@ -1,0 +1,15 @@
+# Initial configuration taken from https://setuptools.pypa.io/en/latest/userguide/quickstart.html
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tagz"
+version = "0.0.1"
+requires-python = ">=3.11"
+dynamic = ["dependencies", "optional-dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.in"] }
+optional-dependencies.dev = { file = ["requirements-dev.in"] }
