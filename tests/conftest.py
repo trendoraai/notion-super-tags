@@ -23,3 +23,8 @@ def page_id_to_test_basic_text():
 @pytest.fixture(scope="session")
 def page_id_to_test_mentions():
     return os.getenv("PAGE_ID_FOR_MENTIONS")
+
+
+@pytest.fixture(scope="session")
+def database_id():
+    return os.getenv("TAGS_DATABASE_ID")
