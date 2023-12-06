@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 from collections import OrderedDict
 from pprint import pprint
 from notion_client import Client
+import logging
 import os
 
 from tagz.extract import extract_text, extract_mention_href_text
@@ -14,6 +15,15 @@ from tagz.database import (
 )
 from tagz.page import write_content_to_page
 from tagz.permissions import assert_permission_to_create_and_delete_page
+
+
+logging.basicConfig(
+    filename="app.log",
+    filemode="w",
+    format="%(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
 
 
 def main():
@@ -60,7 +70,9 @@ def main():
     column_names = get_column_names(notion, database_id)
     print(
         assert_column_names(
-            notion, database_id, ["Name", "Tags", "Created time", "Last edited time"]
+            notion,
+            database_id,
+            ["Name", "Tags", "Created time", "Last edited time", "ID"],
         )
     )
     print(column_names)
