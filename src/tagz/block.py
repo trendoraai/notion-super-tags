@@ -3,6 +3,7 @@
 from typing import Any, Dict, List
 from tagz.page import Homepage
 from pprint import pprint
+from copy import deepcopy
 
 
 class Block:
@@ -13,12 +14,22 @@ class Block:
         self.block_id = block_id
         self.supertags_database = database
         self.supertags_database_id = database.database_id
-        self.data = block_data or self.get_block_data()
+        self._data = block_data
+
         # The block that is above the current block. We need this
         # to remember the order of the blocks.
         self.above_block_id = above_block_id
 
-        self.ensure_supertags_in_database()
+        if self.supertags:
+            self.ensure_supertags_in_database()
+
+    @property
+    def data(self):
+        return self._data
+
+    @data.setter
+    def data(self, value):
+        self._data = value
 
     @property
     def supertags(self):
@@ -41,7 +52,8 @@ class Block:
         return self.data["type"]
 
     def ensure_supertags_in_database(self):
-        for supertag in self.supertags:
+        supertags = self.supertags
+        for supertag in supertags:
             supertag_id = extract_id(supertag)
             if not self.is_supertag_in_database(supertag_id):
                 print(f"Supertag {supertag['plain_text']} is not in database.")
@@ -51,10 +63,13 @@ class Block:
                 )["id"]
                 # change the supertag id in the block
                 self.update_supertag(supertag_id, new_page_id)
+
+                # Update the original block
                 # self.notion.blocks.update(
                 #     block_id=self.block_id,
                 #     **{self.block_type: self.data[self.block_type]},
                 # )
+
 
     def is_supertag_in_database(self, supertag_id):
         supertag_homepage = Homepage(
@@ -63,7 +78,8 @@ class Block:
         return supertag_homepage.is_in_database
 
     def update_supertag(self, old_page_id, new_page_id):
-        original_rich_text = self.data[self.block_type]["rich_text"]
+        data = deepcopy(self.data)
+        original_rich_text = data[self.block_type]["rich_text"]
         for i, item in enumerate(original_rich_text):
             if (
                 item["type"] == "mention"
@@ -76,10 +92,7 @@ class Block:
                 ] = f"https://www.notion.so/{new_page_id.replace('-', '')}"
                 original_rich_text[i] = updated_item
                 break
-        self.data[self.block_type]["rich_text"] = original_rich_text
-
-    def get_block_data(self):
-        return self.notion.blocks.retrieve(block_id=self.block_id)
+        self.data = data
 
     def is_supported_block_type(self):
         return self.block_type in [
@@ -136,16 +149,15 @@ class Block:
     def create_original_synced_block(self):
         if not len(self.supertags) > 0:
             return self.data
+        original_block = {
+            "type": self.block_type,
+            self.block_type: self.data[self.block_type]
+        }
         content = {
             "type": "synced_block",
             "synced_block": {
                 "synced_from": None,
-                "children": [
-                    {
-                        "type": self.block_type,
-                        self.block_type: self.data[self.block_type]
-                    }
-                ],
+                "children": [original_block],
             },
         }
         # Notion API returns all the blocks that come the "after" block
@@ -174,21 +186,27 @@ class Block:
         return original_synced_block
     
     def append_children_to_original_block(self, original_synced_block_id):
+        """ 
+        original_block is the child of original_synced_block. The 
+        content of original_block is the same as the content of the
+        block_id. We need to copy the children of block_id to original_block
+        """
         if self.data["has_children"] and self.supertags:
-            parent_block_id = self.notion.blocks.children.list(block_id=original_synced_block_id)["results"][0]["id"]
-            # children = self._extract_block_children()
-            # pprint(children)
-            # return self.notion.blocks.children.append(
-                # block_id=parent_block_id, children=children)
-            return self.deep_copy(self.block_id, parent_block_id)
-        return None
+            original_block = self.notion.blocks.children.list(block_id=original_synced_block_id)["results"][0]
+            self.deep_copy(self.block_id, original_block["id"])
 
-    def deep_copy(self, copy_from_block_id, copy_to_block_id):
+    def deep_copy(self, copy_from_block_id, copy_to_block_id, is_first_call=True):
         # Retrieve the data from the source block
         source_block_data = self.notion.blocks.retrieve(block_id=copy_from_block_id)
 
-        # Copy the data to the destination block
-        self.notion.blocks.update(block_id=copy_to_block_id, **source_block_data)
+        """ 
+        Copy the data to the destination block only if it's not the first call
+        We don't copy the first call because when making synced function, we
+        already copied the data to the destination block. We only want to
+        copy the nested children of the source block.
+        """
+        if not is_first_call:
+            self.notion.blocks.update(block_id=copy_to_block_id, **source_block_data)
 
         # Retrieve the children of the source block
         source_children = self.notion.blocks.children.list(block_id=copy_from_block_id)["results"]
@@ -202,8 +220,10 @@ class Block:
             }])["results"][0]
 
             # Recursively copy the child block and its children
-            self.deep_copy(source_child["id"], new_block["id"])
-
+            self.deep_copy(source_child["id"], new_block["id"], is_first_call=False)
+    
+    def delete_block_from_notion(self):
+        self.notion.blocks.delete(block_id=self.block_id)
 
 def extract_id(block):
     if block["type"] == "mention":
