@@ -1,9 +1,9 @@
 from dotenv import load_dotenv
 from collections import OrderedDict
-from pprint import pprint
 from notion_client import Client
 import logging
 import os
+import click
 
 from tagz.extract import extract_text, extract_mention_href_text
 from tagz.database import Database
@@ -19,17 +19,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def main():
+@click.command()
+@click.option("--root_page_id", default=None, help="Root page ID")
+def main(root_page_id=None):
     # Load the environment variables
     load_dotenv()
 
     # Initialize Notion client with your integration token
-    notion = Client(auth=os.getenv("NOTION_TOKEN"))
-    database_id = os.getenv("SUPERTAGS_DATABASE_ID")
-    root_page_id = os.getenv("ROOT_PAGE_ID")
-    subpage_id = os.getenv("SUBPAGE_WITHIN_BLOCK_ID")
-    regular_page_id = os.getenv("REGULAR_PAGE_WITHIN_PAGE_ID")
-    block_id_with_supertags = os.getenv("BLOCK_ID_WITH_SUPERTAGS")
+    notion = Client(auth=os.getenv("SECONDARY_NOTION_TOKEN"))
+    database_id = os.getenv("TAGS_DATABASE_ID")
+    # If root_page_id is not passed as an argument, get it from environment variables
+    if not root_page_id:
+        root_page_id = os.getenv("ROOT_PAGE_ID")
 
     supertags_database = Database(notion, database_id)
 
@@ -44,17 +45,20 @@ def main():
             above_block_id=previous_block_id,
         )
         previous_block_id = block_data["id"]
-        updated_data = block.create_original_synced_block()
-        appended_children = block.append_children_to_original_block(updated_data["id"])
-        pprint(appended_children)
-        supertags = block.extract_supertags()
-        for supertag in supertags:
+
+        if not block.supertags:
+            continue
+        
+        synced_wrapper = block.create_original_synced_block()
+        block.append_children_to_original_block(synced_wrapper["id"])
+
+        for supertag in block.supertags:
             supertag_id = extract_id(supertag)
             supertag_homepage = Homepage(notion, supertag_id, database_id)
-            duplicated_block = supertag_homepage.append_synced_block(
-                extract_id(updated_data)
+            _ = supertag_homepage.append_synced_block(
+                synced_wrapper["id"]
             )
-        input("Press Enter to continue...")
+        block.delete_block_from_notion()
 
 
 if __name__ == "__main__":
