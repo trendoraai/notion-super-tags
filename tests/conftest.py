@@ -4,6 +4,8 @@ import os
 import pytest
 from notion_client import Client
 
+print(sys.path)
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
@@ -27,7 +29,7 @@ def page_id_to_test_mentions():
 
 @pytest.fixture(scope="session")
 def database_id():
-    return os.getenv("TAGS_DATABASE_ID")
+    return os.getenv("SUPERTAGS_DATABASE_ID")
 
 
 @pytest.fixture(scope="session")

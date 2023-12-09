@@ -1,4 +1,4 @@
-from src.tagz.page import write_content_to_page
+from src.tagz.page import write_content_to_page, get_paragraph_block_content
 from src.tagz.database import get_page_with_name, delete_block
 import pytest
 
@@ -20,7 +20,9 @@ def test_write_content_to_page(notion, database_id):
 
     # Call the function with test inputs
     content = "This is test content"
-    updated_page = write_content_to_page(notion, page_id, content)
+    updated_page = write_content_to_page(
+        notion, page_id, get_paragraph_block_content(content)
+    )
 
     # Assert that the updated page has the expected content
     assert (
