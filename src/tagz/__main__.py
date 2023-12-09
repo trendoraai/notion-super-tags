@@ -6,16 +6,9 @@ import logging
 import os
 
 from tagz.extract import extract_text, extract_mention_href_text
-from tagz.database import (
-    get_column_names,
-    assert_column_names,
-    create_page_in_database,
-    delete_page,
-    get_page_with_name,
-)
-from tagz.page import write_content_to_page
-from tagz.permissions import assert_permission_to_create_and_delete_page
-
+from tagz.database import Database
+from tagz.block import Block, extract_id
+from tagz.page import Homepage
 
 logging.basicConfig(
     filename="app.log",
@@ -32,72 +25,36 @@ def main():
 
     # Initialize Notion client with your integration token
     notion = Client(auth=os.getenv("NOTION_TOKEN"))
+    database_id = os.getenv("SUPERTAGS_DATABASE_ID")
+    root_page_id = os.getenv("ROOT_PAGE_ID")
+    subpage_id = os.getenv("SUBPAGE_WITHIN_BLOCK_ID")
+    regular_page_id = os.getenv("REGULAR_PAGE_WITHIN_PAGE_ID")
+    block_id_with_supertags = os.getenv("BLOCK_ID_WITH_SUPERTAGS")
 
-    # Replace this with the ID of the page you want to retrieve
-    page_id = os.getenv("PAGE_ID_FOR_MENTIONS")
+    supertags_database = Database(notion, database_id)
 
-    # Retrieve the page properties
-    page = notion.pages.retrieve(page_id=page_id)
-
-    # Print the page title
-    pprint(page)
-    title = page["properties"]["Name"]["title"][0]["plain_text"]
-    print(title)
-
-    # Retrieve the blocks of the page
-    blocks = notion.blocks.children.list(page_id)
-
-    # # Print each block
-    # to_print = []
-    # for block in blocks["results"]:
-    #     pprint(block)
-    #     text = extract_text(block)
-    #     extracted_mention = extract_mention_href_text(block)
-    #     to_print.append({block["type"]: extracted_mention})
-    # pprint(to_print)
-    # # import json
-    # # with open('tests/tests_data/api_response_for_blocks_with_mentions.json', 'w') as f:
-    # #     json.dump(to_print, f)
-
-    # High-level API
-    # Extract all blocks on the page
-    # Keep only the blocks that have tags (mentions)
-    # Extract the tags from the blocks
-    # Extract the tag page for each block
-    # Append the block to the tag page
-
-    database_id = os.getenv("TAGS_DATABASE_ID")
-    column_names = get_column_names(notion, database_id)
-    print(
-        assert_column_names(
+    # TODO: What happens if we want to append at the first first position?
+    previous_block_id = None
+    for block_data in notion.blocks.children.list(block_id=root_page_id)["results"]:
+        block = Block(
             notion,
-            database_id,
-            ["Name", "Tags", "Created time", "Last edited time", "ID"],
+            block_data["id"],
+            supertags_database,
+            block_data,
+            above_block_id=previous_block_id,
         )
-    )
-    print(column_names)
-
-    print(assert_permission_to_create_and_delete_page(notion, page_id, database_id))
-
-    name = "_development"
-
-    tag_page = get_page_with_name(notion, database_id, name)
-
-    print(tag_page)
-
-    if tag_page is None:
-        tag_page = create_page_in_database(
-            notion,
-            database_id,
-            {
-                "Name": {"title": [{"text": {"content": name}}]},
-            },
-        )
-
-    page_id = tag_page["object"] == "page" and tag_page["id"]
-    content = "This is some new ass content."
-    updated_page = write_content_to_page(notion, page_id, content)
-    print(updated_page)
+        previous_block_id = block_data["id"]
+        updated_data = block.create_original_synced_block()
+        appended_children = block.append_children_to_original_block(updated_data["id"])
+        pprint(appended_children)
+        supertags = block.extract_supertags()
+        for supertag in supertags:
+            supertag_id = extract_id(supertag)
+            supertag_homepage = Homepage(notion, supertag_id, database_id)
+            duplicated_block = supertag_homepage.append_synced_block(
+                extract_id(updated_data)
+            )
+        input("Press Enter to continue...")
 
 
 if __name__ == "__main__":
