@@ -4,6 +4,7 @@ from typing import Any, Dict, List
 from tagz.page import Homepage
 from pprint import pprint
 from copy import deepcopy
+from collections import OrderedDict
 
 
 class Block:
@@ -21,6 +22,7 @@ class Block:
         self.above_block_id = above_block_id
 
         if self.supertags:
+            self.remove_duplicate_mention_of_supertags()
             self.ensure_supertags_in_database()
 
     @property
@@ -50,6 +52,32 @@ class Block:
     @property
     def block_type(self):
         return self.data["type"]
+    
+    def remove_duplicate_mention_of_supertags(self):
+        """
+        User could mention the same supertag multiple times. We will
+        remove any supertag that is mentioned more than one time from
+        the block.
+
+        Even if a supertag has a different href, we will still remove
+        it. We'll just use the first supertag that is mentioned.
+
+        We don't want to copy the same block twice to the supertag 
+        homepeage.
+        """
+        data = deepcopy(self.data)
+        original_rich_text = data[self.block_type]["rich_text"]
+        seen_supertags = set()
+        new_rich_text = []
+        for item in original_rich_text:
+            if item["type"] == "mention":
+                if item["plain_text"] not in seen_supertags:
+                    seen_supertags.add(item["plain_text"])
+                    new_rich_text.append(item)
+            else:
+                new_rich_text.append(item)
+        data[self.block_type]["rich_text"] = new_rich_text
+        self.data = data
 
     def ensure_supertags_in_database(self):
         supertags = self.supertags
